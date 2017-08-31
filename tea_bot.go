@@ -53,7 +53,7 @@ func main() {
 			msg.ReplyToMessageID = update.Message.MessageID
 			bot.Send(msg)
 		} else {
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "нет")
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "скорее всего конечно же нет")
 			msg.ReplyToMessageID = update.Message.MessageID
 			bot.Send(msg)
 		}
