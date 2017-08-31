@@ -48,7 +48,7 @@ func main() {
 
 		log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
 
-		if update.Message.Text == "/чай" {
+		if update.Message.Text == "/чай" || update.Message.Text == "/tea" {
 			msg := tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("До чая осталось: %s.", timeToNextTea().Format("15:04:05")))
 			msg.ReplyToMessageID = update.Message.MessageID
 			bot.Send(msg)
