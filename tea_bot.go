@@ -1,17 +1,17 @@
 package main
 
 import (
+	"fmt"
+	"gopkg.in/telegram-bot-api.v4"
 	"log"
 	"os"
 	"time"
-	"fmt"
-	"gopkg.in/telegram-bot-api.v4"
 )
 
 func durationToNextTea() time.Duration {
 	t := time.Now()
 	hour := t.Hour()
-	next_hour := ((hour + 1) / 2) * 2 + 1
+	next_hour := ((hour+1)/2)*2 + 1
 	if next_hour >= 24 {
 		next_hour -= 24
 	}
@@ -38,9 +38,20 @@ func main() {
 
 	updates, err := bot.GetUpdatesChan(u)
 
+	ticker := time.NewTicker(time.Second * 30)
+	go func() {
+		for t := range ticker.C {
+			toTea := durationToNextTea()
+			log.Printf("to next tea: %d", toTea)
+
+			msg := tgbotapi.NewMessage(0, fmt.Sprintf("До чая осталось: %s.", timeToNextTea().Format("15:04:05")))
+			bot.Send(msg)
+
+			fmt.Println("Tick at", t)
+		}
+	}()
+
 	for update := range updates {
-		toTea := durationToNextTea()
-		log.Printf("to next tea: %d", toTea)
 
 		if update.Message == nil {
 			continue
