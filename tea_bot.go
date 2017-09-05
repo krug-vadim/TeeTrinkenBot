@@ -6,7 +6,10 @@ import (
 	"log"
 	"os"
 	"time"
+	"strconv"
 )
+
+const TeaTimeDuration = time.Minute*20
 
 func durationToNextTea() time.Duration {
 	t := time.Now()
@@ -29,7 +32,14 @@ func main() {
 		log.Panic(err)
 	}
 
-	bot.Debug = true
+	teaTimeChatId, err := strconv.ParseInt(os.Getenv("TEABOT_CHAT"), 10, 64)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	log.Printf("Tea group chat id is %x", teaTimeChatId)
+
+	bot.Debug = false
 
 	log.Printf("Authorized on account %s", bot.Self.UserName)
 
@@ -38,16 +48,34 @@ func main() {
 
 	updates, err := bot.GetUpdatesChan(u)
 
-	ticker := time.NewTicker(time.Second * 30)
+	need_create_timer_to_send_alarm := true
+	tea_time_ongoing := false
+
+	ticker := time.NewTicker(time.Second * 10)
 	go func() {
 		for t := range ticker.C {
 			toTea := durationToNextTea()
 			log.Printf("to next tea: %d", toTea)
 
-			msg := tgbotapi.NewMessage(0, fmt.Sprintf("До чая осталось: %s.", timeToNextTea().Format("15:04:05")))
-			bot.Send(msg)
-
 			fmt.Println("Tick at", t)
+
+			if ( need_create_timer_to_send_alarm ) {
+				need_create_timer_to_send_alarm = false
+				timer := time.NewTimer(toTea)
+				go func() {
+					<- timer.C
+					msg := tgbotapi.NewMessage(teaTimeChatId, "го чай")
+					bot.Send(msg)
+					need_create_timer_to_send_alarm = true
+
+					tea_time_ongoing = true
+					tea_ongoin := time.NewTimer(TeaTimeDuration)
+					go func() {
+						<- tea_ongoin.C
+						tea_time_ongoing = false
+					}()
+				}()
+			}
 		}
 	}()
 
@@ -57,10 +85,16 @@ func main() {
 			continue
 		}
 
-		log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
+		log.Printf("[%s/%d] %s", update.Message.From.UserName, update.Message.Chat.ID, update.Message.Text)
 
 		if update.Message.Text == "/чай" || update.Message.Text == "/tea" {
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("До чая осталось: %s.", timeToNextTea().Format("15:04:05")))
+			msg_txt := ""
+			if ( tea_time_ongoing ) {
+				msg_txt = fmt.Sprintf("Нормальные люди уже пьют чай.")
+			} else {
+				msg_txt = fmt.Sprintf("До чая осталось: %s.", timeToNextTea().Format("15:04:05"))
+			}
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, msg_txt)
 			msg.ReplyToMessageID = update.Message.MessageID
 			bot.Send(msg)
 		} else {
