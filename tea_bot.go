@@ -1,12 +1,13 @@
 package main
 
 import (
-	"fmt"
 	"gopkg.in/telegram-bot-api.v4"
+	"fmt"
 	"log"
 	"os"
 	"time"
 	"strconv"
+	"strings"
 )
 
 const TeaTimeDuration = time.Minute*20
@@ -87,7 +88,14 @@ func main() {
 
 		log.Printf("[%s/%d] %s", update.Message.From.UserName, update.Message.Chat.ID, update.Message.Text)
 
-		if update.Message.Text == "/чай" || update.Message.Text == "/tea" {
+		s := strings.Split(update.Message.Text, "@")
+		if len(s) > 1 && s[1] != bot.Self.UserName {
+			continue
+		}
+
+		bot_command := s[0]
+
+		if bot_command == "/чай" || bot_command == "/tea" {
 			msg_txt := ""
 			if ( tea_time_ongoing ) {
 				msg_txt = fmt.Sprintf("Нормальные люди уже пьют чай.")
