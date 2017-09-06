@@ -14,12 +14,14 @@ const TeaTimeDuration = time.Minute*20
 
 func durationToNextTea() time.Duration {
 	t := time.Now()
+	day := t.Day()
 	hour := t.Hour()
 	next_hour := ((hour+1)/2)*2 + 1
 	if next_hour >= 24 {
 		next_hour -= 24
+		day += 1
 	}
-	next_tea := time.Date(t.Year(), t.Month(), t.Day(), next_hour, 0, 0, 0, time.Local)
+	next_tea := time.Date(t.Year(), t.Month(), day, next_hour, 0, 0, 0, time.Local)
 	return next_tea.Sub(t)
 }
 
