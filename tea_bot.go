@@ -4,11 +4,22 @@ import (
 	"gopkg.in/telegram-bot-api.v4"
 	"fmt"
 	"log"
-	"os"
 	"time"
-	"strconv"
 	"strings"
+	"io/ioutil"
+	"encoding/json"
 )
+
+type entry struct {
+	Day   []string `json:"day"`
+	Time  []string `json:"time"`
+}
+
+type bot_config struct {
+	BotToken   string           `json:"tea_time_bot_token"`
+	ChatId     int64            `json:"tea_time_chat_id"`
+	Schedule   map[string]entry `json:"schedule"`
+}
 
 const TeaTimeDuration = time.Minute*20
 
@@ -29,18 +40,41 @@ func timeToNextTea() time.Time {
 	return time.Time{}.Add(durationToNextTea())
 }
 
+func createTeaSchedule(Schedule map[string]entry) {
+	//var schedule []time.Time
+
+	for key, value := range Schedule {
+		fmt.Println("Key:", key)
+		for i, day := range value.Day {
+			fmt.Printf("\t%d) Day: %s\n", i, day)
+			for j, timez := range value.Time {
+				fmt.Printf("\t\t%d) Time: %s\n", j, fmt.Sprintf("%s:00", timez))
+				t,_ := time.Parse("15:04", timez)
+				baseTime := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+				fmt.Println(t.Sub(baseTime))
+				//schedule = append(schedule, )
+			}
+		}
+	}
+}
+
 func main() {
-	bot, err := tgbotapi.NewBotAPI(os.Getenv("TEABOT_TOKEN"))
+	plan, _ := ioutil.ReadFile("bot.json")
+	var teaTime bot_config
+	e := json.Unmarshal(plan, &teaTime)
+	if e != nil {
+		log.Panic(e)
+	}
+	log.Println(teaTime)
+
+	createTeaSchedule(teaTime.Schedule)
+
+	bot, err := tgbotapi.NewBotAPI(teaTime.BotToken)
 	if err != nil {
 		log.Panic(err)
 	}
 
-	teaTimeChatId, err := strconv.ParseInt(os.Getenv("TEABOT_CHAT"), 10, 64)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	log.Printf("Tea group chat id is %x", teaTimeChatId)
+	log.Printf("Tea group chat id is %x", teaTime.ChatId)
 
 	bot.Debug = false
 
@@ -67,7 +101,7 @@ func main() {
 				timer := time.NewTimer(toTea)
 				go func() {
 					<- timer.C
-					msg := tgbotapi.NewMessage(teaTimeChatId, "го чай")
+					msg := tgbotapi.NewMessage(teaTime.ChatId, "го чай")
 					bot.Send(msg)
 					need_create_timer_to_send_alarm = true
 
