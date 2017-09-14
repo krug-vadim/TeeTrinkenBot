@@ -12,8 +12,10 @@ import (
 )
 
 type entry struct {
-	Day   []string `json:"day"`
-	Time  []string `json:"time"`
+	Day     []string `json:"day"`
+	Time    []string `json:"time"`
+	Message []string `json:"message"`
+	Answer    string `json:"answer"`
 }
 
 type bot_config struct {
@@ -23,7 +25,13 @@ type bot_config struct {
 	Schedule     map[string]entry `json:"schedule"`
 }
 
-type TeaTimes []time.Time
+type TeaTime struct {
+	date    time.Time
+	message []string
+	answer    string
+}
+
+type TeaTimes []TeaTime
 
 func (s TeaTimes) Len() int {
 	return len(s)
@@ -34,15 +42,15 @@ func (s TeaTimes) Swap(i, j int) {
 }
 
 func (s TeaTimes) Less(i, j int) bool {
-	return s[i].Before(s[j])
+	return s[i].date.Before(s[j].date)
 }
 
-func durationToNextTea(nextTea time.Time) time.Duration {
+func durationToNextTea(nextTea TeaTime) time.Duration {
 	t := time.Now()
-	return nextTea.Sub(t)
+	return nextTea.date.Sub(t)
 }
 
-func timeToNextTea(nextTea time.Time) time.Time {
+func timeToNextTea(nextTea TeaTime) time.Time {
 	return time.Time{}.Add(durationToNextTea(nextTea))
 }
 
@@ -83,7 +91,7 @@ func getNearestMonday(t time.Time) time.Time {
 	}
 }
 
-func createTeaSchedule(startTime time.Time, schedule map[string]entry) []time.Time {
+func createTeaSchedule(startTime time.Time, schedule map[string]entry) TeaTimes {
 	var items TeaTimes
 
 	current := startTime
@@ -107,7 +115,7 @@ func createTeaSchedule(startTime time.Time, schedule map[string]entry) []time.Ti
 					fmt.Println( scheduledTime )
 					fmt.Println( scheduledTime.Sub(current) )
 					if scheduledTime.Sub(current) > 0 {
-						items = append(items, scheduledTime)
+						items = append(items, TeaTime{scheduledTime, value.Message, value.Answer})
 					}
 				}
 			}
@@ -165,7 +173,7 @@ func main() {
 				timer := time.NewTimer(toTea)
 				go func() {
 					<- timer.C
-					msg := tgbotapi.NewMessage(teaTime.ChatId, "го чай")
+					msg := tgbotapi.NewMessage(teaTime.ChatId, teaSchedule[teaScheduleIndex].message[0])
 					bot.Send(msg)
 					teaScheduleIndex += 1
 					if teaScheduleIndex == len(teaSchedule) {
@@ -205,8 +213,8 @@ func main() {
 			if ( tea_time_ongoing ) {
 				msg_txt = fmt.Sprintf("Нормальные люди уже пьют чай.")
 			} else {
-				log.Printf("next tea at: %s\n", teaSchedule[teaScheduleIndex])
-				msg_txt = fmt.Sprintf("До чая осталось: %s.", timeToNextTea(teaSchedule[teaScheduleIndex]).Format("15:04:05"))
+				log.Printf("next tea at: %s\n", teaSchedule[teaScheduleIndex].date)
+				msg_txt = fmt.Sprintf(teaSchedule[teaScheduleIndex].answer, timeToNextTea(teaSchedule[teaScheduleIndex]).Format("15:04:05"))
 			}
 			msg := tgbotapi.NewMessage(update.Message.Chat.ID, msg_txt)
 			msg.ReplyToMessageID = update.Message.MessageID
