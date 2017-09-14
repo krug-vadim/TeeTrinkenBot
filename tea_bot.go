@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"time"
+	"sort"
 	"strings"
 	"io/ioutil"
 	"encoding/json"
@@ -16,46 +17,108 @@ type entry struct {
 }
 
 type bot_config struct {
-	BotToken   string           `json:"tea_time_bot_token"`
-	ChatId     int64            `json:"tea_time_chat_id"`
-	Schedule   map[string]entry `json:"schedule"`
+	BotToken     string           `json:"tea_time_bot_token"`
+	ChatId       int64            `json:"tea_time_chat_id"`
+	TeaDuration  int              `json:"tea_time_duration"`
+	Schedule     map[string]entry `json:"schedule"`
 }
 
-const TeaTimeDuration = time.Minute*20
+type TeaTimes []time.Time
 
-func durationToNextTea() time.Duration {
+func (s TeaTimes) Len() int {
+	return len(s)
+}
+
+func (s TeaTimes) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s TeaTimes) Less(i, j int) bool {
+	return s[i].Before(s[j])
+}
+
+func durationToNextTea(nextTea time.Time) time.Duration {
 	t := time.Now()
-	day := t.Day()
-	hour := t.Hour()
-	next_hour := ((hour+1)/2)*2 + 1
-	if next_hour >= 24 {
-		next_hour -= 24
-		day += 1
+	return nextTea.Sub(t)
+}
+
+func timeToNextTea(nextTea time.Time) time.Time {
+	return time.Time{}.Add(durationToNextTea(nextTea))
+}
+
+func durationFromWeekStart(day string) time.Duration {
+	switch day {
+		case "monday", "mon":
+			return time.Hour * 24 * 0
+		case "tuesday", "tue":
+			return time.Hour * 24 * 1
+		case "wednesday", "wed":
+			return time.Hour * 24 * 2
+		case "thursday", "thu":
+			return time.Hour * 24 * 3
+		case "friday", "fri":
+			return time.Hour * 24 * 4
+		case "saturday", "sat":
+			return time.Hour * 24 * 5
+		case "sunday", "sun":
+			return time.Hour * 24 * 6
 	}
-	next_tea := time.Date(t.Year(), t.Month(), day, next_hour, 0, 0, 0, time.Local)
-	return next_tea.Sub(t)
+
+	return 0
 }
 
-func timeToNextTea() time.Time {
-	return time.Time{}.Add(durationToNextTea())
+func bod(t time.Time) time.Time {
+	year, month, day := t.Date()
+
+	return time.Date(year, month, day, 0, 0, 0, 0, t.Location())
 }
 
-func createTeaSchedule(Schedule map[string]entry) {
-	//var schedule []time.Time
-
-	for key, value := range Schedule {
-		fmt.Println("Key:", key)
-		for i, day := range value.Day {
-			fmt.Printf("\t%d) Day: %s\n", i, day)
-			for j, timez := range value.Time {
-				fmt.Printf("\t\t%d) Time: %s\n", j, fmt.Sprintf("%s:00", timez))
-				t,_ := time.Parse("15:04", timez)
-				baseTime := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
-				fmt.Println(t.Sub(baseTime))
-				//schedule = append(schedule, )
-			}
+func getNearestMonday(t time.Time) time.Time {
+	for {
+		if t.Weekday() != time.Monday {
+			t = t.AddDate(0, 0, -1)
+		} else {
+			return t
 		}
 	}
+}
+
+func createTeaSchedule(startTime time.Time, schedule map[string]entry) []time.Time {
+	var items TeaTimes
+
+	current := startTime
+	monday := bod(getNearestMonday(current))
+
+	/* we need at least 14 items */
+	for len(items) == 0 {
+		for key, value := range schedule {
+			fmt.Println("Key:", key)
+
+			for i, day := range value.Day {
+				fmt.Printf("\t%d) Day: %s\n", i, day)
+
+				for j, timez := range value.Time {
+					t,e := time.Parse("15:04", timez)
+					if e != nil {
+						continue
+					}
+					scheduledTime := monday.Add(t.Sub(bod(t)) + durationFromWeekStart(day))
+					fmt.Printf("\t\t%d) Time: %s\n", j, fmt.Sprintf("%s:00", timez))
+					fmt.Println( scheduledTime )
+					fmt.Println( scheduledTime.Sub(current) )
+					if scheduledTime.Sub(current) > 0 {
+						items = append(items, scheduledTime)
+					}
+				}
+			}
+		}
+
+		monday = monday.AddDate(0, 0, 7)
+	}
+
+	sort.Sort(items)
+	fmt.Println( items )
+	return items
 }
 
 func main() {
@@ -67,7 +130,8 @@ func main() {
 	}
 	log.Println(teaTime)
 
-	createTeaSchedule(teaTime.Schedule)
+	teaSchedule := createTeaSchedule(time.Now(), teaTime.Schedule)
+	teaScheduleIndex := 0
 
 	bot, err := tgbotapi.NewBotAPI(teaTime.BotToken)
 	if err != nil {
@@ -91,7 +155,7 @@ func main() {
 	ticker := time.NewTicker(time.Second * 10)
 	go func() {
 		for t := range ticker.C {
-			toTea := durationToNextTea()
+			toTea := durationToNextTea(teaSchedule[teaScheduleIndex])
 			log.Printf("to next tea: %d", toTea)
 
 			fmt.Println("Tick at", t)
@@ -103,10 +167,15 @@ func main() {
 					<- timer.C
 					msg := tgbotapi.NewMessage(teaTime.ChatId, "го чай")
 					bot.Send(msg)
+					teaScheduleIndex += 1
+					if teaScheduleIndex == len(teaSchedule) {
+						teaSchedule = createTeaSchedule(time.Now(), teaTime.Schedule)
+						teaScheduleIndex = 0
+					}
 					need_create_timer_to_send_alarm = true
 
 					tea_time_ongoing = true
-					tea_ongoin := time.NewTimer(TeaTimeDuration)
+					tea_ongoin := time.NewTimer(time.Minute*time.Duration(teaTime.TeaDuration))
 					go func() {
 						<- tea_ongoin.C
 						tea_time_ongoing = false
@@ -136,7 +205,8 @@ func main() {
 			if ( tea_time_ongoing ) {
 				msg_txt = fmt.Sprintf("Нормальные люди уже пьют чай.")
 			} else {
-				msg_txt = fmt.Sprintf("До чая осталось: %s.", timeToNextTea().Format("15:04:05"))
+				log.Printf("next tea at: %s\n", teaSchedule[teaScheduleIndex])
+				msg_txt = fmt.Sprintf("До чая осталось: %s.", timeToNextTea(teaSchedule[teaScheduleIndex]).Format("15:04:05"))
 			}
 			msg := tgbotapi.NewMessage(update.Message.Chat.ID, msg_txt)
 			msg.ReplyToMessageID = update.Message.MessageID
